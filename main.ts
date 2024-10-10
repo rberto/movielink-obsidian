@@ -1,4 +1,6 @@
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
+import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, SuggestModal} from 'obsidian';
+import MovieDB = require('node-themoviedb');
+
 
 // Remember to rename these classes and interfaces!
 
@@ -10,11 +12,45 @@ const DEFAULT_SETTINGS: MyPluginSettings = {
 	mySetting: 'default'
 }
 
+interface Movie{
+	title: string;
+	genre: string;
+	year: string;
+}
+
+
 export default class MyPlugin extends Plugin {
 	settings: MyPluginSettings;
+	mdb: MovieDB;
+
+	async getMovies(title: string) {
+		try {
+			const args = {
+				query: {query: title}
+			};
+			const movies = await this.mdb.search.movies(args);
+
+			console.log(movies);
+			/*
+			  {
+				data: Object. Parsed json data of response
+				headers: Object. Headers of response
+			  }
+			*/
+			return movies;
+		} catch (error) {
+			console.error(error);
+		}
+	}
+
 
 	async onload() {
+
 		await this.loadSettings();
+
+		// ES6 Style
+		// import MovieDB from 'node-themoviedb';
+		this.mdb = new MovieDB("", {});
 
 		// This creates an icon in the left ribbon.
 		const ribbonIconEl = this.addRibbonIcon('dice', 'Sample Plugin', (evt: MouseEvent) => {
@@ -39,10 +75,15 @@ export default class MyPlugin extends Plugin {
 		// This adds an editor command that can perform some operation on the current editor instance
 		this.addCommand({
 			id: 'sample-editor-command',
-			name: 'Sample editor command',
-			editorCallback: (editor: Editor, view: MarkdownView) => {
-				console.log(editor.getSelection());
-				editor.replaceSelection('Sample Editor Command');
+			name: 'insert movie based on title',
+			editorCallback: async (editor: Editor, view: MarkdownView) => { 
+				const sel = editor.getSelection();
+				const movies = await this.getMovies(sel);
+
+				new ExampleModal(this.app, movies.data, editor).open();
+
+
+				console.log(`You have selected: ${sel}`);
 			}
 		});
 		// This adds a complex command that can check whether the current state of the app allows execution of the command
@@ -91,18 +132,55 @@ export default class MyPlugin extends Plugin {
 	}
 }
 
+export class ExampleModal extends SuggestModal<Movie> {
+
+	movies:Array<Movie>
+	editor: Editor
+
+	constructor(app: App, data: MovieDB.Responses.Search.Movies, editor: Editor) {
+		super(app);
+		this.editor = editor;
+		this.movies = []
+		for (const m of data.results) {
+			this.movies.push({title: m.title, year: m.release_date, genre: String(m.genre_ids[0])})
+		}
+	}
+	// Returns all available suggestions.
+	getSuggestions(query: string): Movie[] {
+		return this.movies.filter((movie) =>
+			movie.title.toLowerCase().includes(query.toLowerCase())
+		);
+	}
+  
+	// Renders each suggestion item.
+	renderSuggestion(movie: Movie, el: HTMLElement) {
+	  el.createEl("div", { text: movie.title });
+	  el.createEl("small", { text: movie.year });
+	  el.createEl("small", { text: movie.genre });
+	}
+  
+	// Perform action on the selected suggestion.
+	onChooseSuggestion(movie: Movie, evt: MouseEvent | KeyboardEvent) {
+	  new Notice(`Selected ${movie.title}`);
+		this.editor.replaceRange(
+		movie.title + movie.year,
+		this.editor.getCursor("from"), this.editor.getCursor("to")
+	);
+	}
+  }
+
 class SampleModal extends Modal {
 	constructor(app: App) {
 		super(app);
 	}
 
 	onOpen() {
-		const {contentEl} = this;
+		const { contentEl } = this;
 		contentEl.setText('Woah!');
 	}
 
 	onClose() {
-		const {contentEl} = this;
+		const { contentEl } = this;
 		contentEl.empty();
 	}
 }
@@ -116,7 +194,7 @@ class SampleSettingTab extends PluginSettingTab {
 	}
 
 	display(): void {
-		const {containerEl} = this;
+		const { containerEl } = this;
 
 		containerEl.empty();
 
