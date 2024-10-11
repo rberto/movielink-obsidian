@@ -4,11 +4,11 @@ import MovieDB = require('node-themoviedb');
 // Remember to rename these classes and interfaces!
 
 interface MyPluginSettings {
-	mySetting: string;
+	tmdb_api_key: string;
 }
 
 const DEFAULT_SETTINGS: MyPluginSettings = {
-	mySetting: 'default'
+	tmdb_api_key: ''
 }
 
 class Movie{
@@ -97,7 +97,8 @@ export default class MyPlugin extends Plugin {
 
 		// ES6 Style
 		// import MovieDB from 'node-themoviedb';
-		this.mdb = new MovieDB("", {});
+		
+		this.mdb = new MovieDB(this.settings.tmdb_api_key, {});
 
 		// This creates an icon in the left ribbon.
 		const ribbonIconEl = this.addRibbonIcon('dice', 'Sample Plugin', (evt: MouseEvent) => {
@@ -127,8 +128,11 @@ export default class MyPlugin extends Plugin {
 				const sel = editor.getSelection();
 				const movies = await this.getMovies(sel);
 
-				new ExampleModal(this.app, movies, editor, this.mdb).open();
+				if (movies == undefined) {
+					return;
+				}
 
+				new ExampleModal(this.app, movies, editor, this.mdb).open();
 
 				console.log(`You have selected: ${sel}`);
 			}
@@ -253,13 +257,13 @@ class SampleSettingTab extends PluginSettingTab {
 		containerEl.empty();
 
 		new Setting(containerEl)
-			.setName('Setting #1')
-			.setDesc('It\'s a secret')
+			.setName('The Movie Database API key')
+			.setDesc('Your API key')
 			.addText(text => text
-				.setPlaceholder('Enter your secret')
-				.setValue(this.plugin.settings.mySetting)
+				.setPlaceholder('Enter your TMDB API key')
+				.setValue(this.plugin.settings.tmdb_api_key)
 				.onChange(async (value) => {
-					this.plugin.settings.mySetting = value;
+					this.plugin.settings.tmdb_api_key = value;
 					await this.plugin.saveSettings();
 				}));
 	}
