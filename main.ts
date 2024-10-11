@@ -1,7 +1,6 @@
 import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, SuggestModal} from 'obsidian';
 import MovieDB = require('node-themoviedb');
 
-
 // Remember to rename these classes and interfaces!
 
 interface MyPluginSettings {
@@ -12,10 +11,44 @@ const DEFAULT_SETTINGS: MyPluginSettings = {
 	mySetting: 'default'
 }
 
-interface Movie{
+class Movie{
 	title: string;
-	genre: string;
-	year: string;
+	id: number;
+	genres: Array<string>;
+	release: string;
+	link: string;
+
+	constructor(details_data: MovieDB.Responses.Movie.GetDetails) {
+		this.title = details_data.title;
+		this.id = details_data.id;
+		this.genres = [];
+		for (const genre of details_data.genres) {
+			console.log(genre.name);
+			this.genres.push(genre.name);
+		}
+		this.release = details_data.release_date;
+	}
+
+	get_year_of_release() {
+		const index = this.release.indexOf("-");
+		return this.release.substring(0, index);
+	}
+
+	async getLink(mdb: MovieDB) {
+		try{
+			const result = await mdb.movie.getExternalIDs({
+				pathParameters: {
+					movie_id: this.id
+				}
+			});
+			return result.data.imdb_id;
+		} catch (error) {
+			console.error(error);
+			console.error("Could not get external id for id" + String(this.id))
+		}
+		return ""
+	}
+
 }
 
 
@@ -23,21 +56,35 @@ export default class MyPlugin extends Plugin {
 	settings: MyPluginSettings;
 	mdb: MovieDB;
 
+
+
 	async getMovies(title: string) {
+		const result = new Array<Movie>();
 		try {
 			const args = {
 				query: {query: title}
 			};
 			const movies = await this.mdb.search.movies(args);
 
-			console.log(movies);
+			for (const movie of movies.data.results) {
+
+				const detail = await this.mdb.movie.getDetails({
+					pathParameters: {
+						movie_id: movie.id
+					}
+				});
+				result.push(new Movie(detail.data))
+			}
+
+
+			console.log(result);
 			/*
 			  {
 				data: Object. Parsed json data of response
 				headers: Object. Headers of response
 			  }
 			*/
-			return movies;
+			return result;
 		} catch (error) {
 			console.error(error);
 		}
@@ -80,7 +127,7 @@ export default class MyPlugin extends Plugin {
 				const sel = editor.getSelection();
 				const movies = await this.getMovies(sel);
 
-				new ExampleModal(this.app, movies.data, editor).open();
+				new ExampleModal(this.app, movies, editor, this.mdb).open();
 
 
 				console.log(`You have selected: ${sel}`);
@@ -136,14 +183,16 @@ export class ExampleModal extends SuggestModal<Movie> {
 
 	movies:Array<Movie>
 	editor: Editor
+	mdb: MovieDB
 
-	constructor(app: App, data: MovieDB.Responses.Search.Movies, editor: Editor) {
+	constructor(app: App, movies: Array<Movie>, editor: Editor, mdb: MovieDB) {
 		super(app);
 		this.editor = editor;
-		this.movies = []
-		for (const m of data.results) {
-			this.movies.push({title: m.title, year: m.release_date, genre: String(m.genre_ids[0])})
-		}
+		this.movies = movies;
+		this.mdb = mdb;
+		// for (const m of data.results) {
+		// 	this.movies.push({title: m.title, year: m.release_date, genre: String(m.genre_ids[0])})
+		// }
 	}
 	// Returns all available suggestions.
 	getSuggestions(query: string): Movie[] {
@@ -154,18 +203,23 @@ export class ExampleModal extends SuggestModal<Movie> {
   
 	// Renders each suggestion item.
 	renderSuggestion(movie: Movie, el: HTMLElement) {
-	  el.createEl("div", { text: movie.title });
-	  el.createEl("small", { text: movie.year });
-	  el.createEl("small", { text: movie.genre });
+		el.createEl("div", { text: movie.title });
+		let str_genres = movie.get_year_of_release() + " - "
+		for (const g of movie.genres) {
+			console.log(str_genres);
+			str_genres += g;
+			str_genres += " / "
+		}
+		el.createEl("small", { text: str_genres });
 	}
-  
+
 	// Perform action on the selected suggestion.
-	onChooseSuggestion(movie: Movie, evt: MouseEvent | KeyboardEvent) {
-	  new Notice(`Selected ${movie.title}`);
-		this.editor.replaceRange(
-		movie.title + movie.year,
-		this.editor.getCursor("from"), this.editor.getCursor("to")
-	);
+	async onChooseSuggestion(movie: Movie, evt: MouseEvent | KeyboardEvent) {
+		new Notice(`Selected ${movie.title}`);
+		const id = await movie.getLink(this.mdb);
+		console.info(id);
+		this.editor.replaceSelection(
+			"[" + movie.title + "](https://www.imdb.com/title/" + String(id) + ")");
 	}
   }
 
