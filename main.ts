@@ -10,22 +10,38 @@ const DEFAULT_SETTINGS: MovieLinkSettings = {
 	tmdb_api_key: ''
 }
 
-class Movie{
+class Media{
 	title: string;
 	id: number;
 	genres: Array<string>;
 	release: string;
 	link: string;
 
-	constructor(details_data: MovieDB.Responses.Movie.GetDetails) {
-		this.title = details_data.title;
-		this.id = details_data.id;
-		this.genres = [];
+	public static fromMovieDetail (details_data: MovieDB.Responses.Movie.GetDetails): Media {
+		const cls = new Media();
+
+		cls.title = details_data.title;
+		cls.id = details_data.id;
+		cls.genres = [];
 		for (const genre of details_data.genres) {
 			console.log(genre.name);
-			this.genres.push(genre.name);
+			cls.genres.push(genre.name);
 		}
-		this.release = details_data.release_date;
+		cls.release = details_data.release_date;
+		return cls;
+	}
+
+	public static fromTvShowDetail (details_data: MovieDB.Responses.TV.GetDetails) {
+		const cls = new Media();
+		cls.title = details_data.name;
+		cls.id = details_data.id;
+		cls.genres = [];
+		for (const genre of details_data.genres) {
+			console.log(genre.name);
+			cls.genres.push(genre.name);
+		}
+		cls.release = details_data.first_air_date;
+		return cls;
 	}
 
 	get_year_of_release() {
@@ -55,8 +71,35 @@ export default class MovieLink extends Plugin {
 	settings: MovieLinkSettings;
 	mdb: MovieDB;
 
+	async getTvShows(title: string) {
+		const result = new Array<Media>();
+		try {
+			const args = {
+				query: {query: title}
+			};
+			const tvshows = await this.mdb.search.TVShows(args);
+
+			for (const tvshow of tvshows.data.results) {
+
+				const detail = await this.mdb.tv.getDetails({
+					pathParameters: {
+						tv_id: tvshow.id
+					}
+				});
+				result.push(Media.fromTvShowDetail(detail.data))
+			}
+
+
+			console.log(result);
+
+			return result;
+		} catch (error) {
+			console.error(error);
+		}
+	}
+
 	async getMovies(title: string) {
-		const result = new Array<Movie>();
+		const result = new Array<Media>();
 		try {
 			const args = {
 				query: {query: title}
@@ -70,7 +113,7 @@ export default class MovieLink extends Plugin {
 						movie_id: movie.id
 					}
 				});
-				result.push(new Movie(detail.data))
+				result.push(Media.fromMovieDetail(detail.data))
 			}
 
 
@@ -106,6 +149,23 @@ export default class MovieLink extends Plugin {
 			}
 		});
 
+		this.addCommand({
+			id: 'movielink-selecttvshow-command',
+			name: 'insert tvshow link based on title',
+			editorCallback: async (editor: Editor, view: MarkdownView) => { 
+				const sel = editor.getSelection();
+				const movies = await this.getTvShows(sel);
+
+				if (movies == undefined) {
+					return;
+				}
+
+				new SuggestMovie(this.app, movies, editor, this.mdb).open();
+
+				console.log(`You have selected: ${sel}`);
+			}
+		});
+
 		this.addSettingTab(new MovieLinkSettingTab(this.app, this));
 
 	}
@@ -123,31 +183,31 @@ export default class MovieLink extends Plugin {
 	}
 }
 
-export class SuggestMovie extends SuggestModal<Movie> {
+export class SuggestMovie extends SuggestModal<Media> {
 
-	movies:Array<Movie>
+	medias:Array<Media>
 	editor: Editor
 	mdb: MovieDB
 
-	constructor(app: App, movies: Array<Movie>, editor: Editor, mdb: MovieDB) {
+	constructor(app: App, medias: Array<Media>, editor: Editor, mdb: MovieDB) {
 		super(app);
 		this.editor = editor;
-		this.movies = movies;
+		this.medias = medias;
 		this.mdb = mdb;
 	}
 
 	// Returns all available suggestions.
-	getSuggestions(query: string): Movie[] {
-		return this.movies.filter((movie) =>
-			movie.title.toLowerCase().includes(query.toLowerCase())
+	getSuggestions(query: string): Media[] {
+		return this.medias.filter((media) =>
+			media.title.toLowerCase().includes(query.toLowerCase())
 		);
 	}
   
 	// Renders each suggestion item.
-	renderSuggestion(movie: Movie, el: HTMLElement) {
-		el.createEl("div", { text: movie.title });
-		let str_genres = movie.get_year_of_release() + " - "
-		for (const g of movie.genres) {
+	renderSuggestion(media: Media, el: HTMLElement) {
+		el.createEl("div", { text: media.title });
+		let str_genres = media.get_year_of_release() + " - "
+		for (const g of media.genres) {
 			console.log(str_genres);
 			str_genres += g;
 			str_genres += " / "
@@ -156,12 +216,12 @@ export class SuggestMovie extends SuggestModal<Movie> {
 	}
 
 	// Perform action on the selected suggestion.
-	async onChooseSuggestion(movie: Movie, evt: MouseEvent | KeyboardEvent) {
-		new Notice(`Selected ${movie.title}`);
-		const id = await movie.getLink(this.mdb);
+	async onChooseSuggestion(media: Media, evt: MouseEvent | KeyboardEvent) {
+		new Notice(`Selected ${media.title}`);
+		const id = await media.getLink(this.mdb);
 		console.info(id);
 		this.editor.replaceSelection(
-			"[" + movie.title + "](https://www.imdb.com/title/" + String(id) + ")");
+			"[" + media.title + "](https://www.imdb.com/title/" + String(id) + ")");
 	}
   }
 
