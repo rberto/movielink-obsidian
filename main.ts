@@ -1,5 +1,6 @@
 import { App, Editor, MarkdownView, Notice, Plugin, PluginSettingTab, Setting, SuggestModal} from 'obsidian';
 import MovieDB = require('node-themoviedb');
+import { time, timeEnd } from 'console';
 
 
 interface MovieLinkSettings {
@@ -72,23 +73,16 @@ export default class MovieLink extends Plugin {
 	mdb: MovieDB;
 
 	async getTvShows(title: string) {
-		const result = new Array<Media>();
+		let result = new Array<Media>();
 		try {
 			const args = {
 				query: {query: title}
 			};
 			const tvshows = await this.mdb.search.TVShows(args);
 
-			for (const tvshow of tvshows.data.results) {
+			const prom = Promise.all(tvshows.data.results.map(elt => this.getTvShowDetail(elt)));
 
-				const detail = await this.mdb.tv.getDetails({
-					pathParameters: {
-						tv_id: tvshow.id
-					}
-				});
-				result.push(Media.fromTvShowDetail(detail.data))
-			}
-
+			result = (await prom).map(elt => Media.fromTvShowDetail(elt.data));
 
 			console.log(result);
 
@@ -98,23 +92,51 @@ export default class MovieLink extends Plugin {
 		}
 	}
 
+	async getTvShowDetail(tvshow: MovieDB.Objects.TVShow) {
+		return await this.mdb.tv.getDetails({
+			pathParameters: {
+				tv_id: tvshow.id
+			}
+		});
+	}
+
+	async getMovieDetail(movie: MovieDB.Objects.Movie) {
+		return await this.mdb.movie.getDetails({
+			pathParameters: {
+				movie_id: movie.id
+			}
+		});
+	}
+
 	async getMovies(title: string) {
-		const result = new Array<Media>();
+		let result = new Array<Media>();
 		try {
 			const args = {
 				query: {query: title}
 			};
+
+			console.time("movie");
+
 			const movies = await this.mdb.search.movies(args);
 
-			for (const movie of movies.data.results) {
+			// const params = movies.data.results.map(e => this.movie2detailarg(e)); // Todo move movi2detail elsewhere
 
-				const detail = await this.mdb.movie.getDetails({
-					pathParameters: {
-						movie_id: movie.id
-					}
-				});
-				result.push(Media.fromMovieDetail(detail.data))
-			}
+			const prom = Promise.all(movies.data.results.map(elt => this.getMovieDetail(elt)));
+
+			result = (await prom).map(elt => Media.fromMovieDetail(elt.data));
+
+			console.timeEnd("movie");
+
+
+			// for (const movie of movies.data.results) {
+
+			// 	const detail = await this.mdb.movie.getDetails({
+			// 		pathParameters: {
+			// 			movie_id: movie.id
+			// 		}
+			// 	});
+			// 	result.push(Media.fromMovieDetail(detail.data))
+			// }
 
 
 			console.log(result);
