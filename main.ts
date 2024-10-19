@@ -73,43 +73,43 @@ export default class MovieLink extends Plugin {
 	mdb: MovieDB;
 
 	async getTvShows(title: string) {
-		let result = new Array<Media>();
+
 		try {
 			const args = {
 				query: {query: title}
 			};
 			const tvshows = await this.mdb.search.TVShows(args);
 
-			const prom = Promise.all(tvshows.data.results.map(elt => this.getTvShowDetail(elt)));
+			const prom = Promise.all(tvshows.data.results.map(elt => MovieLink.getTvShowDetail(elt, this.mdb)));
 
-			result = (await prom).map(elt => Media.fromTvShowDetail(elt.data));
-
-			console.log(result);
-
-			return result;
+			return prom;
 		} catch (error) {
 			console.error(error);
 		}
 	}
 
-	async getTvShowDetail(tvshow: MovieDB.Objects.TVShow) {
-		return await this.mdb.tv.getDetails({
+	public static async getTvShowDetail(tvshow: MovieDB.Objects.TVShow, mdb: MovieDB) {
+		const tvshow_details = mdb.tv.getDetails({
 			pathParameters: {
 				tv_id: tvshow.id
 			}
 		});
+
+		return Media.fromTvShowDetail((await tvshow_details).data)
+
 	}
 
-	async getMovieDetail(movie: MovieDB.Objects.Movie) {
-		return await this.mdb.movie.getDetails({
+	public static async getMovieDetail(movie: MovieDB.Objects.Movie, mdb: MovieDB) {
+		const movie_details =  mdb.movie.getDetails({
 			pathParameters: {
 				movie_id: movie.id
 			}
 		});
+
+		return Media.fromMovieDetail((await movie_details).data)
 	}
 
-	async getMovies(title: string) {
-		let result = new Array<Media>();
+	public static async getMovies(title: string, mdb: MovieDB) {
 		try {
 			const args = {
 				query: {query: title}
@@ -117,31 +117,13 @@ export default class MovieLink extends Plugin {
 
 			console.time("movie");
 
-			const movies = await this.mdb.search.movies(args);
+			const movies = await mdb.search.movies(args);
 
-			// const params = movies.data.results.map(e => this.movie2detailarg(e)); // Todo move movi2detail elsewhere
-
-			const prom = Promise.all(movies.data.results.map(elt => this.getMovieDetail(elt)));
-
-			result = (await prom).map(elt => Media.fromMovieDetail(elt.data));
+			const prom = Promise.all(movies.data.results.map(elt => MovieLink.getMovieDetail(elt, mdb)));
 
 			console.timeEnd("movie");
 
-
-			// for (const movie of movies.data.results) {
-
-			// 	const detail = await this.mdb.movie.getDetails({
-			// 		pathParameters: {
-			// 			movie_id: movie.id
-			// 		}
-			// 	});
-			// 	result.push(Media.fromMovieDetail(detail.data))
-			// }
-
-
-			console.log(result);
-
-			return result;
+			return prom;
 		} catch (error) {
 			console.error(error);
 		}
@@ -156,16 +138,11 @@ export default class MovieLink extends Plugin {
 
 		this.addCommand({
 			id: 'movielink-selectmovie-command',
-			name: 'insert movie link based on title',
+			name: 'Replace selection with movie link',
 			editorCallback: async (editor: Editor, view: MarkdownView) => { 
 				const sel = editor.getSelection();
-				const movies = await this.getMovies(sel);
 
-				if (movies == undefined) {
-					return;
-				}
-
-				new SuggestMovie(this.app, movies, editor, this.mdb).open();
+				new SuggestMovie(this.app, editor, sel, this.mdb).open();
 
 				console.log(`You have selected: ${sel}`);
 			}
@@ -173,16 +150,11 @@ export default class MovieLink extends Plugin {
 
 		this.addCommand({
 			id: 'movielink-selecttvshow-command',
-			name: 'insert tvshow link based on title',
+			name: 'Replace selection with tvshow link',
 			editorCallback: async (editor: Editor, view: MarkdownView) => { 
 				const sel = editor.getSelection();
-				const movies = await this.getTvShows(sel);
 
-				if (movies == undefined) {
-					return;
-				}
-
-				new SuggestMovie(this.app, movies, editor, this.mdb).open();
+				new SuggestMovie(this.app, editor, sel, this.mdb).open();
 
 				console.log(`You have selected: ${sel}`);
 			}
@@ -208,24 +180,29 @@ export default class MovieLink extends Plugin {
 export class SuggestMovie extends SuggestModal<Media> {
 
 	medias:Array<Media>
-	editor: Editor
+	sel: string
 	mdb: MovieDB
+	editor: Editor
 
-	constructor(app: App, medias: Array<Media>, editor: Editor, mdb: MovieDB) {
+	constructor(app: App, editor: Editor, sel: string, mdb: MovieDB) {
 		super(app);
+		this.sel = sel;
 		this.editor = editor;
-		this.medias = medias;
 		this.mdb = mdb;
 	}
 
-	// Returns all available suggestions.
-	getSuggestions(query: string): Media[] {
-		return this.medias.filter((media) =>
-			media.title.toLowerCase().includes(query.toLowerCase())
-		);
+	getSuggestions(query: string): Promise <Media []> {
+
+		console.time("movie");
+		if (this.sel != "") {
+			query = this.sel;
+		}
+
+		const prom = MovieLink.getMovies(query, this.mdb);
+
+		return prom;
 	}
   
-	// Renders each suggestion item.
 	renderSuggestion(media: Media, el: HTMLElement) {
 		el.createEl("div", { text: media.title });
 		let str_genres = media.get_year_of_release() + " - "
@@ -237,7 +214,6 @@ export class SuggestMovie extends SuggestModal<Media> {
 		el.createEl("small", { text: str_genres });
 	}
 
-	// Perform action on the selected suggestion.
 	async onChooseSuggestion(media: Media, evt: MouseEvent | KeyboardEvent) {
 		new Notice(`Selected ${media.title}`);
 		const id = await media.getLink(this.mdb);
