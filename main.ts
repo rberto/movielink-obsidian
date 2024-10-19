@@ -137,7 +137,7 @@ export default class MovieLink extends Plugin {
 		this.mdb = new MovieDB(this.settings.tmdb_api_key, {});
 
 		this.addCommand({
-			id: 'movielink-selectmovie-command',
+			id: 'movielink-selectreplacemovie-command',
 			name: 'Replace selection with movie link',
 			editorCallback: async (editor: Editor, view: MarkdownView) => { 
 				const sel = editor.getSelection();
@@ -159,6 +159,23 @@ export default class MovieLink extends Plugin {
 				console.log(`You have selected: ${sel}`);
 			}
 		});
+
+		this.addCommand({
+			id: 'movielink-insertmovie-command',
+			name: 'Insert movie link',
+			editorCallback: async (editor: Editor, view: MarkdownView) => { 
+				new SuggestMovie(this.app, editor, "", this.mdb).open();
+			}
+		});
+
+		this.addCommand({
+			id: 'movielink-inserttvshow-command',
+			name: 'Insert TV-show link',
+			editorCallback: async (editor: Editor, view: MarkdownView) => { 
+				new SuggestMovie(this.app, editor, "", this.mdb).open();
+			}
+		});
+
 
 		this.addSettingTab(new MovieLinkSettingTab(this.app, this));
 
@@ -183,6 +200,9 @@ export class SuggestMovie extends SuggestModal<Media> {
 	sel: string
 	mdb: MovieDB
 	editor: Editor
+	lastSearch: string
+	lastSearchTime: number
+	private delayInMs = 250
 
 	constructor(app: App, editor: Editor, sel: string, mdb: MovieDB) {
 		super(app);
@@ -191,7 +211,19 @@ export class SuggestMovie extends SuggestModal<Media> {
 		this.mdb = mdb;
 	}
 
-	getSuggestions(query: string): Promise <Media []> {
+	async getSuggestions(query: string): Promise <Media []> {
+
+		if (query === this.lastSearch || query.length < 3) return;
+        const timestamp = Date.now();
+        this.lastSearchTime = timestamp;
+        const Sleep = (ms: number) =>
+            new Promise((resolve) => setTimeout(resolve, ms));
+        await Sleep(this.delayInMs);
+        if (this.lastSearchTime != timestamp) {
+            // Search is canceled by a newer search
+            return;
+        }
+		this.lastSearch = query;
 
 		console.time("movie");
 		if (this.sel != "") {
