@@ -62,7 +62,6 @@ class Media{
 
 	async getImdbLink(mdb: MovieDB) {
 		if (this.isTvShow == false) {
-		// try{
 			const result = await mdb.movie.getExternalIDs({
 				pathParameters: {
 					movie_id: this.id
@@ -77,9 +76,7 @@ class Media{
 			});
 			return "https://www.imdb.com/title/" + String(result.data.imdb_id);
 		}
-		return ""
 	}
-
 }
 
 
