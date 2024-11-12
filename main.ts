@@ -1,5 +1,5 @@
 import { App, Editor, MarkdownView, Notice, Plugin, PluginSettingTab, Setting, SuggestModal} from 'obsidian';
-import MovieDB = require('node-themoviedb');
+import MovieDB from 'node-themoviedb';
 
 
 interface MovieLinkSettings {
