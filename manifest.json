@@ -1,7 +1,7 @@
 {
 	"id": "movielink-plugin",
 	"name": "MovieLink",
-	"version": "1.0.1-alpha",
+	"version": "1.0.2-alpha",
 	"minAppVersion": "0.15.0",
 	"description": "Obsidian plugin to replace movie/tv-show title with link to said movie/tv-show",
 	"author": "Obsidian",
