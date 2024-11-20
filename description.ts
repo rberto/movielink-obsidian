@@ -1467,12 +1467,12 @@ import { IncomingHttpHeaders } from 'http2';
   //   }
 
   //   namespace Genre {
-  //     interface Common {
-  //       genres: {
-  //         id: number;
-  //         name: string;
-  //       }[];
-  //     }
+  export interface Common {
+    genres: {
+      id: number;
+      name: string;
+    }[];
+  }
   //   }
 
   //   namespace GuestSession {
